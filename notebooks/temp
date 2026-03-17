@@ -1,6 +1,0 @@
-### 01_data_plot.ipynb
-Visualization of EMG signals and extracted features.
-
-### 02_demo_classifier.ipynb
-Demonstration of the trained EMG classifier.  
-Loads the trained model and shows prediction results.
