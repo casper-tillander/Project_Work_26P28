@@ -1,0 +1,8 @@
+{
+    "code-runner.runInTerminal": true,
+    "code-runner.fileDirectoryAsCwd": true,
+    "code-runner.executorMap": {
+        "c": "C:\\msys64\\ucrt64\\bin\\gcc.exe $fileName testModel.c -o main.exe; .\\main.exe"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}
