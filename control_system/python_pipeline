@@ -1,0 +1,68 @@
+# Imports
+import time
+
+class ControlSystem:
+    def __init__(self):
+        ''' Initializes pre-trained ML models '''
+        self.classifier = None 
+        self.regressor = None
+
+    def get_data(self):
+        ''' Pulls raw EMG and IMU data '''
+        return None, None
+
+    def preprocess_signals(self, emg_data, imu_data):
+        ''' Preprocessing of the data '''
+        return None, None
+
+    def extract_features(self, cleaned_emg, cleaned_imu):
+        ''' Calculates features from the signal windows '''
+        return None
+
+    def classify_activity(self, features):
+        ''' Classifier: Predicts the movement category '''
+        pass
+
+    def estimate_joint_kinematics(self, features, activity_type):
+        ''' Regressor: Predicts the continuous ankle angle '''
+        pass
+
+    def update_controller(self, predicted_angle):
+        ''' Updates the controller '''
+        pass
+
+    def run(self):
+        ''' Main execution loop for the control pipeline '''
+        while True:
+            # Start timing the entire pipeline
+            pipeline_start = time.perf_counter()
+
+            # Acquisition
+            raw_emg, raw_imu = self.get_data()
+
+            # Cleaning
+            processed_emg, processed_imu = self.preprocess_signals(raw_emg, raw_imu)
+
+            # Feature Engineering
+            features = self.extract_features(processed_emg, processed_imu)
+
+            # Intent Recognition
+            activity_type = self.classify_activity(features)
+
+            # Parameter Prediction
+            predicted_angle = self.estimate_joint_kinematics(features, activity_type)
+
+            # Actuation
+            self.update_controller(predicted_angle)
+
+            # End timing and calculate duration
+            pipeline_end = time.perf_counter()
+            execution_time = pipeline_end - pipeline_start
+            
+            print(f"Total execution time: {execution_time*1000} ms")
+
+            break
+
+if __name__ == "__main__":
+    system = ControlSystem()
+    system.run()
