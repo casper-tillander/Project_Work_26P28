@@ -137,9 +137,9 @@ The easiest way to view runtime results is by using the **built-in terminal in 
     You should see:
     
 
-- `VCOM1`
+- `VCOM0`
     
-- `VCOM2`
+- `VCOM1`
     
 
 On different systems it may appear as:
