@@ -30,7 +30,7 @@ It sets up a UART hardware interrupt, establishes a sliding window (circular buf
 
 This Python script simulates a real-time sensor by streaming raw data to the board and listening for the predictions.
 
-==It loads the `.pkl` dataset, packs the raw IMU floats into tight binary packets (`struct.pack`), and sends them over the USB serial connection. It simultaneously listens for the microcontroller's predicted angle response.==
+**It loads the `.pkl` dataset, packs the raw IMU floats into tight binary packets (`struct.pack`), and sends them over the USB serial connection. It simultaneously listens for the microcontroller's predicted angle response.**
 
 ---
 
