@@ -1,12 +1,3 @@
-# Embedded ML Pipeline for Joint Angle Estimation
-## NRF5340-DK + Zephyr RTOS
-
----
-
-## Overview
-
-This is a way to implement a full machine learning inference pipeline directly on the NRF5340 microcontroller. The pipeline reads IMU sensor data, extracts features, runs a pre-trained model, and outputs predicted joint angles with benchmark results. Everything runs on-chip with no PC required at runtime.
-
 The pipeline supports two models:
 - ANN (Feedforward Neural Network)
 - Random Forest Regressor
