@@ -1,10 +1,5 @@
 """
-export_test_data.py
-Project 26P28 — Export test data from pkl to C arrays
-
-Exports TWO things:
-1. Pre-computed feature vectors (26 features) for RF (Maria's model)
-2. Raw IMU windows (410 x 24) for ANN (Junzhe's model, feature extraction on-chip)
+Export test data from pkl to C arrays
 
 Produces: test_data.h
 
