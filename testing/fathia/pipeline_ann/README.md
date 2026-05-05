@@ -32,8 +32,6 @@ python export_test_data.py
 
 This reads `09_filtered_all_data.pkl`, takes sliding windows from the test split (last 20% of data), and exports them as C float arrays into `test_data.h`. Copy the generated file into the `src/` folder.
 
-This only needs to be run once. It replaces the role of physical sensors during benchmarking.
-
 ---
 
 ## Step 2: Select Model
