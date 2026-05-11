@@ -4,9 +4,7 @@ Project directory for a machine learning influenced control system to be run on 
 
 ## Dataset Description
 
-### Sensor Configuration & Data Channels
-
-Sampling rate: **2048Hz***
+Sampling rate: **2048Hz**
 The system records a total of **158 signal channels**:
 
 - **EMG (Muscle Activity)**: 2×64 channels (128 total) from the **Tibialis Anterior (TA)** and **Gastrocnemius Medialis (GM)** muscles.
