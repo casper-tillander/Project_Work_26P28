@@ -1,0 +1,2 @@
+This is a complete pipeline, without the control system. The python pipeline to train the regressor, split the data and export the model and the testing data to the embedded directory can be run using the .sh or .bat scripts. The embedded directory can then be opened and ran in vscode using the nRF Connect extension.
+Just add the .pkl file(s) to the data folder first, as they are not uploaded to git.
