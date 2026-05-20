@@ -1,15 +1,44 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/uart.h>
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "regressor.h"
-#include "test_data.h"
 
-// Configuration
+// timing and buffer configuration
 #define SAMPLE_RATE_HZ 2048
 #define CHUNK_SIZE_MS 150
 #define CHUNK_SAMPLES ((SAMPLE_RATE_HZ * CHUNK_SIZE_MS) / 1000)
+#define STEP_SAMPLES (CHUNK_SAMPLES / 2)
+#define KEEP_SAMPLES (CHUNK_SAMPLES - STEP_SAMPLES)
 
-// Prints floats
+// sensor and model configuration
+#define NUM_TA_COLS 64
+#define NUM_GM_COLS 64
+#define NUM_IMU_COLS 24
+#define TOTAL_SENSOR_COLS 152
+
+#define RF_REG_FEATURE_COUNT 26
+#define RF_REG_OUTPUT_COUNT 6 
+
+// global memory
+float window[CHUNK_SAMPLES][TOTAL_SENSOR_COLS];
+
+// Binary UART reader
+void read_exact_bytes(const struct device *uart, uint8_t *data, size_t len) {
+    size_t rx_bytes = 0;
+    while (rx_bytes < len) {
+        unsigned char c;
+        // Poll the hardware register directly. Returns 0 when a byte is available.
+        if (uart_poll_in(uart, &c) == 0) {
+            data[rx_bytes++] = c;
+        }
+    }
+}
+
+// Helper function to print floats without crashing Zephyr's memory
 static void print_float_3(const char *name, float value)
 {
     float pos_val = (value < 0.0f) ? -value : value;
@@ -18,11 +47,9 @@ static void print_float_3(const char *name, float value)
     printk("%s%s%d.%03d", name, (value < 0.0f ? "-" : ""), whole, frac);
 }
 
-// Extract features from the data chunk
 void extract_features(const float chunk[CHUNK_SAMPLES][TOTAL_SENSOR_COLS], float *features_out) {
     int f_idx = 0;
 
-    // Calculate EMG TA MAV
     float ta_sum = 0.0f;
     for(int i = 0; i < CHUNK_SAMPLES; i++) {
         for(int c = 0; c < NUM_TA_COLS; c++) {
@@ -31,7 +58,6 @@ void extract_features(const float chunk[CHUNK_SAMPLES][TOTAL_SENSOR_COLS], float
     }
     features_out[f_idx++] = ta_sum / (CHUNK_SAMPLES * NUM_TA_COLS);
 
-    // Calculate EMG GM MAV
     float gm_sum = 0.0f;
     for(int i = 0; i < CHUNK_SAMPLES; i++) {
         for(int c = 0; c < NUM_GM_COLS; c++) {
@@ -40,7 +66,6 @@ void extract_features(const float chunk[CHUNK_SAMPLES][TOTAL_SENSOR_COLS], float
     }
     features_out[f_idx++] = gm_sum / (CHUNK_SAMPLES * NUM_GM_COLS);
 
-    // Calculate IMU Means
     for(int c = 0; c < NUM_IMU_COLS; c++) {
         float sum = 0.0f;
         for(int i = 0; i < CHUNK_SAMPLES; i++) {
@@ -50,47 +75,45 @@ void extract_features(const float chunk[CHUNK_SAMPLES][TOTAL_SENSOR_COLS], float
     }
 }
 
-int main(void)
-{
-    printk("nRF5340 Regressor Embedded Demo\n");
-    printk("Loaded %d raw samples. Window size: %d ms.\n\n", NUM_SAMPLES, CHUNK_SIZE_MS);
+int main(void) {
+    // Get the standard UART console device
+    const struct device *uart_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+    if (!device_is_ready(uart_dev)) {
+        printk("UART device not found!\n");
+        return 0;
+    }
 
-    int num_chunks = NUM_SAMPLES / CHUNK_SAMPLES;
+    printk("nRF5340 HIL Binary Inference Started\n");
 
-    for (int chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
-        // Calculate where the chunk starts
-        int start_row = chunk_idx * CHUNK_SAMPLES;
+    int samples_needed = CHUNK_SAMPLES;
+    int write_idx = 0;
 
-        // Start timer
-        uint32_t start_cycles = k_cycle_get_32();
+    while (1) {
+        // Read binary rows one by one
+        for (int i = 0; i < samples_needed; i++) {
+            // Tell Python we are ready
+            printk("READY_FOR_ROW\n");
+            
+            // Read exactly 608 bytes
+            read_exact_bytes(uart_dev, (uint8_t *)window[write_idx], TOTAL_SENSOR_COLS * sizeof(float));
+            write_idx++;
+        }
 
-        // Extract Features from the chunk
+        // Extract and predict
         float current_features[RF_REG_FEATURE_COUNT];
-        extract_features(&raw_sensor_data[start_row], current_features);
-
-        // Run the model
+        extract_features(window, current_features);
+        
         float outputs[RF_REG_OUTPUT_COUNT];
         predict_joint_outputs(current_features, outputs);
 
-        // Stop timer and calculate processing time
-        uint32_t end_cycles = k_cycle_get_32();
-        uint32_t diff_cycles = end_cycles - start_cycles;
-        uint32_t time_us = k_cyc_to_us_floor32(diff_cycles); // Convert to microseconds!
+        print_float_3("PREDICTION:", outputs[0]);
+        printk("\n");
 
-        // Output the results
-        printk("Chunk %3d | ", chunk_idx + 1);
+        // Shift buffer
+        memmove(window, window + STEP_SAMPLES, KEEP_SAMPLES * sizeof(window[0]));
         
-        print_float_3("Predicted Ankle Angle: ", outputs[0]); 
-        printk(" deg | Processing Time: %u us\n", time_us);
-
-        // Sleep for 150ms
-        k_sleep(K_MSEC(CHUNK_SIZE_MS)); 
-    }
-
-    printk("\nDemo Sequence Complete.\n");
-
-    while (1) {
-        k_sleep(K_SECONDS(1));
+        write_idx = KEEP_SAMPLES;
+        samples_needed = STEP_SAMPLES; 
     }
 
     return 0;
