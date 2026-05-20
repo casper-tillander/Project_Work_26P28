@@ -11,7 +11,4 @@ python train_regressor.py
 echo "3. Exporting regressor..."
 python export_regressor.py
 
-echo "4. Exporting test data..."
-python export_test_data.py
-
 echo "Done."
