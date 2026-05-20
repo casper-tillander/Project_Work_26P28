@@ -11,7 +11,11 @@ from pathlib import Path
 COM_PORT = "COM16"
 BAUD_RATE = 1000000
 
-# How many predictions to show on the screen at once (Sliding Window)
+# Set this to any activity in dataset. 
+# Set to None to start from the beginning.
+START_ACTIVITY = "run"
+
+# How many predictions to show on the screen at once
 MAX_PLOT_POINTS = 150
 
 # Thread-safe memory to share data between the Serial stream and the Plot
@@ -25,6 +29,17 @@ DATA_DIR = BASE_DIR / "data"
 
 print("Loading test dataset...")
 df = pd.read_pickle(DATA_DIR / "testing_dataset.pkl")
+
+# Find the starting row for the requested activity
+start_row = 0
+if START_ACTIVITY and "Activity" in df.columns:
+    # Find the first index where the activity matches (case-insensitive)
+    match_indices = df.index[df["Activity"].str.lower() == START_ACTIVITY.lower()]
+    if len(match_indices) > 0:
+        start_row = match_indices[0]
+        print(f"Skipping to row {start_row} to start at activity: '{START_ACTIVITY}'")
+    else:
+        print(f"Warning: Activity '{START_ACTIVITY}' not found. Starting from row 0.")
 
 ta_cols = [c for c in df.columns if "EMG_TA" in c]
 gm_cols = [c for c in df.columns if "EMG_GM" in c]
@@ -46,9 +61,9 @@ plt.rcParams.update({
     "figure.dpi": 100, 
 })
 
-# Setup the Plot Figure
+# Setup the plot figure
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={'height_ratios': [4, 1.5]})
-fig.suptitle(f"Real-Time Hardware-in-the-Loop Inference ({true_angle_col})", weight='bold', fontsize=14)
+fig.suptitle(f"Real-Time Dominant Ankle Angle Prediction ({true_angle_col})", weight='bold', fontsize=14)
 
 line_true, = ax1.plot([], [], label='True Angle', color='#2C3E50', linewidth=2)
 line_pred, = ax1.plot([], [], label='Predicted Angle', color='#C0392B', linestyle='--', linewidth=2)
@@ -72,11 +87,12 @@ def serial_worker():
         print(f"Failed to connect to Serial: {e}")
         return
 
-    current_row = 0
+    # Start from the row we calculated above
+    current_row = start_row
     step_counter = 0
     last_send_time = 0
 
-    print("Streaming binary data to microcontroller...")
+    print("Streaming data to microcontroller...")
 
     while current_row < len(df_sensors):
         raw_line = ser.readline()
@@ -88,17 +104,23 @@ def serial_worker():
         except:
             continue
         
-        if line.startswith("READY_FOR_ROW"):
-            if current_row >= len(df_sensors):
+        if line.startswith("READY_FOR_CHUNK"):
+            samples_needed = int(line.split(":")[1])
+            if current_row + samples_needed > len(df_sensors):
                 break
                 
-            row = df_sensors[current_row]
-            binary_data = struct.pack(f'<{len(row)}f', *row)
+            # Grab all rows at once based on current_row
+            batch = df_sensors[current_row : current_row + samples_needed]
             
-            # Start the stopwatch right before sending the bytes
+            # Flatten the 2D array into a 1D array and pack it
+            flat_batch = batch.flatten()
+            binary_data = struct.pack(f'<{len(flat_batch)}f', *flat_batch)
+            
+            # Start the stopwatch and send the entire chunk instantly
             last_send_time = time.perf_counter()
             ser.write(binary_data)
-            current_row += 1
+            
+            current_row += samples_needed
                 
         elif line.startswith("PREDICTION"):
             # Stop the stopwatch the exact millisecond the prediction arrives
@@ -148,11 +170,11 @@ def update_plot(frame):
 
     return line_true, line_pred, line_lat
 
-# Start the Serial background thread (daemon=True means it closes when the plot window closes)
+# Start the serial background thread (daemon=True means it closes when the plot window closes)
 thread = threading.Thread(target=serial_worker, daemon=True)
 thread.start()
 
-# Start the Live Animation loop (Updates every 30ms)
+# Start the live animation loop (Updates every 30ms)
 ani = FuncAnimation(fig, update_plot, interval=30, blit=False, cache_frame_data=False)
 
 plt.tight_layout()
