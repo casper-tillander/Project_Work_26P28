@@ -18,6 +18,13 @@ START_ACTIVITY = "run"
 # How many predictions to show on the screen at once
 MAX_PLOT_POINTS = 150
 
+# Timing calculations to match the C code
+SAMPLE_RATE_HZ = 2048
+CHUNK_SIZE_MS = 150
+CHUNK_SAMPLES = int((SAMPLE_RATE_HZ * CHUNK_SIZE_MS) / 1000)
+STEP_SAMPLES = int(CHUNK_SAMPLES / 2)
+TIME_PER_STEP_S = STEP_SAMPLES / SAMPLE_RATE_HZ
+
 # Thread-safe memory to share data between the Serial stream and the Plot
 plot_steps = deque(maxlen=MAX_PLOT_POINTS)
 plot_true = deque(maxlen=MAX_PLOT_POINTS)
@@ -72,9 +79,9 @@ ax1.legend(loc="upper right", frameon=False)
 ax1.spines['top'].set_visible(False)
 ax1.spines['right'].set_visible(False)
 
-line_lat, = ax2.plot([], [], label='Latency (ms)', color='#7F8C8D', linewidth=1.5, alpha=0.8)
+line_lat, = ax2.plot([], [], label='Hardware Latency (ms)', color='#7F8C8D', linewidth=1.5, alpha=0.8)
 ax2.set_ylabel("Latency (ms)")
-ax2.set_xlabel("Prediction Step")
+ax2.set_xlabel("Time (s)")
 ax2.spines['top'].set_visible(False)
 ax2.spines['right'].set_visible(False)
 ax2.fill_between([], [], color='#7F8C8D', alpha=0.1) 
@@ -82,7 +89,7 @@ ax2.fill_between([], [], color='#7F8C8D', alpha=0.1)
 def serial_worker():
     print(f"Connecting to {COM_PORT} at {BAUD_RATE} baud...")
     try:
-        ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
+        ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1, rtscts=True)
     except Exception as e:
         print(f"Failed to connect to Serial: {e}")
         return
@@ -90,7 +97,6 @@ def serial_worker():
     # Start from the row we calculated above
     current_row = start_row
     step_counter = 0
-    last_send_time = 0
 
     print("Streaming data to microcontroller...")
 
@@ -116,28 +122,33 @@ def serial_worker():
             flat_batch = batch.flatten()
             binary_data = struct.pack(f'<{len(flat_batch)}f', *flat_batch)
             
-            # Start the stopwatch and send the entire chunk instantly
-            last_send_time = time.perf_counter()
             ser.write(binary_data)
             
             current_row += samples_needed
                 
-        elif line.startswith("PREDICTION"):
-            # Stop the stopwatch the exact millisecond the prediction arrives
-            arrival_time = time.perf_counter()
-            latency_ms = (arrival_time - last_send_time) * 1000.0
-            
+        elif line.startswith("PREDICTION:"):
             try:
-                angle = float(line.split(":")[1])
+                # Parse format: PREDICTION:-5.123,LATENCY_US:1450
+                parts = line.split(",")
+                angle = float(parts[0].split(":")[1])
+                latency_us = float(parts[1].split(":")[1])
+                
+                # Convert hardware microseconds to milliseconds for the plot
+                hw_latency_ms = latency_us / 1000.0 
+                
                 true_angle = df[true_angle_col].iloc[current_row - 1]
                 
-                plot_steps.append(step_counter)
+                # Calculate the current dataset time in seconds
+                current_time_s = step_counter * TIME_PER_STEP_S
+                
+                plot_steps.append(current_time_s)
                 plot_true.append(true_angle)
                 plot_pred.append(angle)
-                plot_lat.append(latency_ms)
+                plot_lat.append(hw_latency_ms)
                 
                 step_counter += 1
-            except:
+            except Exception as e:
+                # Ignore garbled serial lines
                 pass
 
     ser.close()
@@ -153,7 +164,7 @@ def update_plot(frame):
     y_pred = list(plot_pred)
     y_lat = list(plot_lat)
 
-    # Update Top Graph (Angles)
+    # Update top graph (Angles)
     line_true.set_data(x_data, y_true)
     line_pred.set_data(x_data, y_pred)
     
@@ -163,10 +174,11 @@ def update_plot(frame):
     max_y = max(max(y_true), max(y_pred)) + 5
     ax1.set_ylim(min_y, max_y)
 
-    # Update Bottom Graph (Latency)
+    # Update bottom graph (Latency)
     line_lat.set_data(x_data, y_lat)
     ax2.set_xlim(x_data[0], x_data[-1])
-    ax2.set_ylim(0, max(y_lat) + 10) 
+    # Added a small buffer so the graph doesn't collapse if latency is near 0
+    ax2.set_ylim(0, max(y_lat) + 2) 
 
     return line_true, line_pred, line_lat
 
