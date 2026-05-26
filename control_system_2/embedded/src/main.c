@@ -89,15 +89,17 @@ int main(void) {
     int write_idx = 0;
 
     while (1) {
-        // Read binary rows one by one
-        for (int i = 0; i < samples_needed; i++) {
-            // Tell Python we are ready
-            printk("READY_FOR_ROW\n");
-            
-            // Read exactly 608 bytes
-            read_exact_bytes(uart_dev, (uint8_t *)window[write_idx], TOTAL_SENSOR_COLS * sizeof(float));
-            write_idx++;
-        }
+        // Tell Python we are ready for a big chunk, and exactly how many samples to send
+        printk("READY_FOR_CHUNK:%d\n", samples_needed);
+        
+        // Calculate total bytes: samples * columns * 4 bytes per float
+        size_t bytes_to_read = samples_needed * TOTAL_SENSOR_COLS * sizeof(float);
+        
+        // Read the entire block of memory in one go
+        read_exact_bytes(uart_dev, (uint8_t *)window[write_idx], bytes_to_read);
+
+        // Start timer
+        uint32_t start_cycles = k_cycle_get_32();
 
         // Extract and predict
         float current_features[RF_REG_FEATURE_COUNT];
@@ -106,8 +108,13 @@ int main(void) {
         float outputs[RF_REG_OUTPUT_COUNT];
         predict_joint_outputs(current_features, outputs);
 
+        // Stop timer and calculate latency
+        uint32_t end_cycles = k_cycle_get_32();
+        uint32_t hw_latency_us = k_cyc_to_us_floor32(end_cycles - start_cycles);
+
+        // Print prediction and latency
         print_float_3("PREDICTION:", outputs[0]);
-        printk("\n");
+        printk(",LATENCY_US:%u\n", hw_latency_us);
 
         // Shift buffer
         memmove(window, window + STEP_SAMPLES, KEEP_SAMPLES * sizeof(window[0]));
