@@ -14,4 +14,4 @@ This directory contains the implementation of the prediction pipeline using the 
 3. **Data streaming**: Run `python/stream_data.py` to begin the real-time HIL simulation.
 
 ## Difference from UART pipeline
-This version utilizes the nRF5340 native USB controller as a CDC ACM device, providing higher data throughput for the HIL simulation. This makes the demo run faster, but the prediction latency is slower.
+This version utilizes the nRF5340 native USB controller as a CDC ACM device, providing higher data throughput for the HIL simulation. This makes the live plotting demo run faster, but the prediction latency is slower.
