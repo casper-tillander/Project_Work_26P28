@@ -2,6 +2,8 @@
 
 This project was developed as part of the course ELEC-E8004 - Project Work at Aalto University, under the instruction of Ivan Vujaklija.
 
+Project contributors: Casper Tillander (Project Manager), Maria Oja, Fathia Nugraha, Junzhe Sun.
+
 The system implements a real-time hardware-in-the-loop (HIL) pipeline for predicting ankle joint angles using machine learning. It processes high-density electromyography (EMG) and inertial measurement unit (IMU) data on an nRF5340 microcontroller to perform low-latency inference.
 
 ## System overview
