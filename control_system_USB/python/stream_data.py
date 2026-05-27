@@ -1,0 +1,193 @@
+import serial
+import struct
+import time
+import threading
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from collections import deque
+from pathlib import Path
+
+COM_PORT = "COM17"
+BAUD_RATE = 1000000
+
+# Set this to any activity in dataset. 
+# Set to None to start from the beginning.
+START_ACTIVITY = "run"
+
+# How many predictions to show on the screen at once
+MAX_PLOT_POINTS = 150
+
+# Timing calculations
+SAMPLE_RATE_HZ = 2048
+CHUNK_SIZE_MS = 150
+CHUNK_SAMPLES = int((SAMPLE_RATE_HZ * CHUNK_SIZE_MS) / 1000)
+STEP_SAMPLES = int(CHUNK_SAMPLES / 2)
+TIME_PER_STEP_S = STEP_SAMPLES / SAMPLE_RATE_HZ
+
+# Thread-safe memory to share data between the serial stream and the plot
+plot_steps = deque(maxlen=MAX_PLOT_POINTS)
+plot_true = deque(maxlen=MAX_PLOT_POINTS)
+plot_pred = deque(maxlen=MAX_PLOT_POINTS)
+plot_lat = deque(maxlen=MAX_PLOT_POINTS)
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+
+print("Loading test dataset...")
+df = pd.read_pickle(DATA_DIR / "testing_dataset.pkl")
+
+# Find the starting row for the requested activity
+start_row = 0
+if START_ACTIVITY and "Activity" in df.columns:
+    # Find the first index where the activity matches (case-insensitive)
+    match_indices = df.index[df["Activity"].str.lower() == START_ACTIVITY.lower()]
+    if len(match_indices) > 0:
+        start_row = match_indices[0]
+        print(f"Skipping to row {start_row} to start at activity: '{START_ACTIVITY}'")
+    else:
+        print(f"Warning: Activity '{START_ACTIVITY}' not found. Starting from row 0.")
+
+ta_cols = [c for c in df.columns if "EMG_TA" in c]
+gm_cols = [c for c in df.columns if "EMG_GM" in c]
+imu_cols = [c for c in df.columns if any(s in c for s in ["-f", "-c", "-q", "-h"])]
+sensor_cols = ta_cols + gm_cols + imu_cols
+
+# Dynamically find the True Angle column (starts with 'G_')
+true_angle_col = [c for c in df.columns if c.startswith("G_")][0]
+
+df_sensors = df[sensor_cols].values
+
+# Set formatting standards for the live plot
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.size": 10,
+    "axes.labelsize": 12,
+    "axes.titlesize": 12,
+    "legend.fontsize": 11,
+    "figure.dpi": 100, 
+})
+
+# Setup the plot figure
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), gridspec_kw={'height_ratios': [4, 1.5]})
+fig.suptitle(f"Real-Time Dominant Ankle Angle Prediction ({true_angle_col})", weight='bold', fontsize=14)
+
+line_true, = ax1.plot([], [], label='True Angle', color='#2C3E50', linewidth=2)
+line_pred, = ax1.plot([], [], label='Predicted Angle', color='#C0392B', linestyle='--', linewidth=2)
+ax1.set_ylabel("Angle (deg)")
+ax1.legend(loc="upper right", frameon=False)
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+
+line_lat, = ax2.plot([], [], label='Hardware Latency (ms)', color='#7F8C8D', linewidth=1.5, alpha=0.8)
+ax2.set_ylabel("Latency (ms)")
+ax2.set_xlabel("Time (s)")
+ax2.spines['top'].set_visible(False)
+ax2.spines['right'].set_visible(False)
+ax2.fill_between([], [], color='#7F8C8D', alpha=0.1) 
+
+def serial_worker():
+    print(f"Connecting to {COM_PORT} at {BAUD_RATE} baud...")
+    try:
+        # Native USB ignores baud rate and rtscts
+        ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1, write_timeout=5, rtscts=False)
+    except Exception as e:
+        print(f"Failed to connect to Serial: {e}")
+        return
+
+    # Start from the row we calculated above
+    current_row = start_row
+    step_counter = 0
+
+    print("Streaming data to microcontroller...")
+
+    while current_row < len(df_sensors):
+        raw_line = ser.readline()
+        if not raw_line:
+            continue
+            
+        try:
+            line = raw_line.decode('utf-8', errors='ignore').strip()
+        except:
+            continue
+        
+        if line.startswith("READY_FOR_CHUNK"):
+            samples_needed = int(line.split(":")[1])
+            if current_row + samples_needed > len(df_sensors):
+                break
+                
+            batch = df_sensors[current_row : current_row + samples_needed]
+            flat_batch = batch.flatten()
+            binary_data = struct.pack(f'<{len(flat_batch)}f', *flat_batch)
+            
+            # Send the entire binary block at once. 
+            # The OS and USB hardware will handle flow control and NAKs natively.
+            ser.write(binary_data)
+            
+            current_row += samples_needed
+                
+        elif line.startswith("PREDICTION:"):
+            try:
+                # Parse format: PREDICTION:-5.123,LATENCY_US:1450
+                parts = line.split(",")
+                angle = float(parts[0].split(":")[1])
+                latency_us = float(parts[1].split(":")[1])
+                
+                # Convert hardware microseconds to milliseconds for the plot
+                hw_latency_ms = latency_us / 1000.0 
+                
+                true_angle = df[true_angle_col].iloc[current_row - 1]
+                
+                # Calculate the current dataset time in seconds
+                current_time_s = step_counter * TIME_PER_STEP_S
+                
+                plot_steps.append(current_time_s)
+                plot_true.append(true_angle)
+                plot_pred.append(angle)
+                plot_lat.append(hw_latency_ms)
+                
+                step_counter += 1
+            except Exception as e:
+                # Ignore garbled serial lines
+                pass
+
+    ser.close()
+    print("Dataset streaming finished.")
+
+def update_plot(frame):
+    if len(plot_steps) < 2:
+        return line_true, line_pred, line_lat
+
+    # Convert deques to lists for matplotlib
+    x_data = list(plot_steps)
+    y_true = list(plot_true)
+    y_pred = list(plot_pred)
+    y_lat = list(plot_lat)
+
+    # Update top graph (Angles)
+    line_true.set_data(x_data, y_true)
+    line_pred.set_data(x_data, y_pred)
+    
+    # Dynamically scale the axes to create a scrolling effect
+    ax1.set_xlim(x_data[0], x_data[-1])
+    min_y = min(min(y_true), min(y_pred)) - 5
+    max_y = max(max(y_true), max(y_pred)) + 5
+    ax1.set_ylim(min_y, max_y)
+
+    # Update bottom graph (Latency)
+    line_lat.set_data(x_data, y_lat)
+    ax2.set_xlim(x_data[0], x_data[-1])
+    # Added a small buffer so the graph doesn't collapse if latency is near 0
+    ax2.set_ylim(0, max(y_lat) + 2) 
+
+    return line_true, line_pred, line_lat
+
+# Start the serial background thread (daemon=True means it closes when the plot window closes)
+thread = threading.Thread(target=serial_worker, daemon=True)
+thread.start()
+
+# Start the live animation loop (Updates every 30ms)
+ani = FuncAnimation(fig, update_plot, interval=30, blit=False, cache_frame_data=False)
+
+plt.tight_layout()
+plt.show()
