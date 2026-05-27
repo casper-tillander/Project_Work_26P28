@@ -8,11 +8,11 @@ The system implements a real-time hardware-in-the-loop (HIL) pipeline for predic
 
 <img width="752" height="922" alt="methods" src="https://github.com/user-attachments/assets/05f772d3-7bac-4cf2-bc26-50f9edd70a5b" />
 
-The project bridges high-level Python-based machine learning with low-level embedded C execution:
-1.  **Training**: Random forest regressors are trained in Python using scikit-learn.
-2.  **Export**: Trained models are converted into optimized C headers and source files.
-3.  **Inference**: The nRF5340 (running Zephyr RTOS) performs real-time feature extraction and model inference.
-4.  **Validation**: A HIL interface allows streaming sensor data from a PC to the MCU and visualizing performance.
+The system utilizes a modular pipeline to deploy random forest regression for real-time joint angle estimation on embedded hardware.
+
+* **Model development**: Random forest models are trained in Python and automatically exported as C-compatible data structures.
+* **Embedded execution**: The nRF5340 microcontroller performs real-time feature extraction and inference within a Zephyr RTOS environment.
+* **Performance validation**: A hardware-in-the-loop interface enables low-latency data streaming and real-time visualization of prediction accuracy.
 
 ## Data specifications
 
@@ -40,7 +40,7 @@ The embedded firmware must be built and flashed to the nRF5340-DK before running
 
 ## Pipeline workflow
 
-To deploy and test the system, follow this sequence:
+To deploy and test the system, follow this sequence, or run the provided setup-scripts.
 
 1.  **`split_database.py`**: Partitions raw data into training and testing sets.
 2.  **`train_regressor.py`**: Trains the random forest model.
