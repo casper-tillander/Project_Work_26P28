@@ -53,13 +53,13 @@ To deploy and test the system, follow this sequence, or run the provided setup-s
 
 ## Results
 
-### Joint Angle Regression
+### Joint angle regression
 
 Below are time-series plots comparing the true ankle angles against the predicted values for different movement patterns.
 
 <img width="1108" height="1280" alt="results" src="https://github.com/user-attachments/assets/8af14add-9d08-4a8a-a7e7-b51dc201e99e" />
 
-### Movement Classification
+### Movement classification
 
 The system also includes a classification pipeline to identify movement types. Below are the confusion matrices for the best-performing model (Random Forest) under two conditions: excluding and including weighted movements.
 
