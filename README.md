@@ -26,10 +26,12 @@ The system utilizes a high-density sensor suite sampled at **2048 Hz**:
 
 ## Project structure
 
+*   `classifier/`: Movement classification pipeline, including feature extraction and model comparison.
 *   `control_system_UART/`: Implementation using standard UART for HIL communication.
 *   `control_system_USB/`: Implementation using USB CDC ACM for high-speed HIL communication.
-*   `embedded/`: Zephyr RTOS source code, including the regressor logic and feature extraction.
-*   `python/`: Data processing, model training, C-code generation, and real-time visualization scripts.
+*   `.../embedded/`: Zephyr RTOS source code, including the regressor logic and feature extraction.
+*   `.../python/`: Data processing, model training, C-code generation, and real-time visualization scripts.
+*   `.../data/`: Data directory.
 
 ## Building and flashing
 
@@ -51,9 +53,19 @@ To deploy and test the system, follow this sequence, or run the provided setup-s
 
 ## Results
 
+### Joint Angle Regression
+
 Below are time-series plots comparing the true ankle angles against the predicted values for different movement patterns.
 
 <img width="1108" height="1280" alt="results" src="https://github.com/user-attachments/assets/8af14add-9d08-4a8a-a7e7-b51dc201e99e" />
+
+### Movement Classification
+
+The system also includes a classification pipeline to identify movement types. Below are the confusion matrices for the best-performing model (Random Forest) under two conditions: excluding and including weighted movements.
+
+| Excluding Weighted Movements | Including Weighted Movements |
+|:---:|:---:|
+| ![Confusion Matrix - No Weights](./classifier/outputs_classifier/experiment/confusion_matrix_noweights.png) | ![Confusion Matrix - Weights](./classifier/outputs_classifier/experiment_all/confusion_matrix_weights.png) |
 
 ## Requirements
 
